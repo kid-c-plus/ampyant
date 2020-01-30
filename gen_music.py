@@ -46,16 +46,22 @@ def write_song(seed=None):
     length = random.randint(MIN_LENGTH, MAX_LENGTH)
 
     scale = SCALES[random.randint(0, len(SCALES) - 1)]
-    root = scale['root'][random.randint(0, len(scale['root']) - 1)]
+    root_note = scale['root'][random.randint(0, len(scale['root']) - 1)]
 
     # notes must all be precomputed in order to determine length of silent root AudioSegment
     # note notation: [pitch, duration, lone duration]
     total_dur = max(pick_note_ld(), 2)
     note_dur = max(pick_note_dur(), total_dur)
     curr_trail = note_dur
-    notes = [[root, note_dur, total_dur]]
+    notes = [[root_note, note_dur, total_dur]]
+
+    prev_note = root_note
 
     for _ in range(length - 2):
+        note = prev_note
+        while note == prev_note:
+            note = pick_note(root_note, scale['mods'])
+        prev_note = note
         ld = pick_note_ld()
         note_dur = max(pick_note_dur(), ld)
      
@@ -67,14 +73,14 @@ def write_song(seed=None):
         if curr_trail < note_dur:
             curr_trail = note_dur
 
-        notes.append([pick_note(root, scale['mods']), note_dur, ld])
+        notes.append([pick_note(root_note, scale['mods']), note_dur, ld])
     
     end_ld = pick_note_ld()
 
     end_dur = max(pick_note_dur(), end_ld, curr_trail)
     total_dur += end_dur
 
-    notes.append([root, end_dur, end_ld])
+    notes.append([root_note, end_dur, end_ld])
 
     # all notes will be overlaid over this silent AudioSegment
     root_seg = AudioSegment.silent(duration = total_dur * SAMPLE_LENGTH)
@@ -102,7 +108,7 @@ def main():
     def song_worker():
         while True:
             if songs.qsize() < 5:
-                print("writing new song...")
+                print("writing a new song...")
                 songs.put(write_song())
             else:
                 time.sleep(0.25)
