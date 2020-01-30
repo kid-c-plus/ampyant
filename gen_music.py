@@ -1,7 +1,9 @@
 from pydub import AudioSegment
 from pydub.playback import play
 
+import threading, queue
 import random
+import time
 
 WAV_LENGTH = 3000
 SAMPLE_LENGTH = 2000
@@ -16,7 +18,7 @@ MIN_NOTE_LD = 0
 MAX_NOTE_LD = 3
 
 SCALES = [
-            {'root' : [0, 1, 2, 3, 4],
+            {'root' : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
             'mods' : [0, 2, 7, 11, 12, 14, 19, 23, 24, 26, 28, 29, 31]}
          ]
 
@@ -67,17 +69,49 @@ def write_song(seed=None):
     curr_overlay = 0
     for note in notes:
         p, dur, ld = note
-        note_seg = (AudioSegment.from_file("guitar_tones/%d.wav" % p).fade_in(LENGTH_DIFF).fade_out(LENGTH_DIFF)[LENGTH_DIFF // 2: -1 * LENGTH_DIFF // 2] * dur).fade_in(FADE_LENGTH).fade_out(FADE_LENGTH)
+        wav_seg = AudioSegment.from_file("guitar_tones/%d.wav" % p)
+        note_seg = wav_seg[LENGTH_DIFF // 2: ]
+        for _ in range(dur - 1):
+            combined = note_seg.append(wav_seg, crossfade=LENGTH_DIFF)
+            note_seg = combined
+        note_seg = (note_seg[: -1 * LENGTH_DIFF // 2]).fade_in(FADE_LENGTH).fade_out(FADE_LENGTH)
+        # note_seg = (AudioSegment.from_file("guitar_tones/%d.wav" % p)[LENGTH_DIFF // 2: -1 * LENGTH_DIFF // 2] * dur).fade_in(FADE_LENGTH).fade_out(FADE_LENGTH)
         root_seg = root_seg.overlay(note_seg, position=curr_overlay)
         curr_overlay += ld * SAMPLE_LENGTH
 
     return root_seg
 
 def main():
-    while True:
-        play(write_song())
-        if input("wanna hear another? (y/n)\n") == "n":
-            break
+    def song_worker():
+        while True:
+            if killed:
+                return
+            elif songs.qsize() < 5:
+                print("writing new song...")
+                songs.put(write_song())
+            else:
+                time.sleep(0.25)
+
+    killed = False
+    songs = queue.Queue()
+    
+    cv = threading.Condition()
+    song_thread = threading.Thread(target=song_worker)
+    song_thread.start()
+
+    print("writing song, please wait...")
+    try:
+        while True:
+            song = songs.get()
+            print("playing a new song!")
+            play(song)
+            if input("Wanna hear another? (y/n): ") == "n":
+                killed = True
+                break
+    except KeyboardInterrupt:
+        killed = True
+
+    song_thread.join()
 
 if __name__ == "__main__":
     main()
